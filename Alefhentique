@@ -1,50 +1,182 @@
+if getgenv().executado then return end
+getgenv().executado = true
+
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local RS = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local aimbot = false
+local espLine = false
+local espBoxName = false
+local currentTarget = nil
+local fovPercent = 50
+local maxFov = 360
+local fovRadius = maxFov * (fovPercent / 100)
 
-local ESPEnabled = false
-local FOVSize = 100
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "GunfightUI"
 
-local function CreateESP(player)
-    local Box = Drawing.new("Square")
-    Box.Visible = false
-    Box.Color = player.Team == LocalPlayer.Team and Color3.fromRGB(0, 0, 255) or Color3.fromRGB(255, 0, 0)
-    Box.Thickness = 2
-    Box.Filled = false
+local xButton = Instance.new("TextButton", gui)
+xButton.Size = UDim2.new(0, 40, 0, 20)
+xButton.Position = UDim2.new(0, 10, 0, 50)
+xButton.Text = "X"
+xButton.BackgroundColor3 = Color3.new(1, 0, 0)
+xButton.TextColor3 = Color3.new(1, 1, 1)
+xButton.BorderSizePixel = 0
+xButton.MouseButton1Click:Connect(function()
+    currentTarget = nil
+end)
 
-    local function Update()
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local RootPart = player.Character.HumanoidRootPart
-            local Vector, OnScreen = Camera:WorldToViewportPoint(RootPart.Position)
+local label = Instance.new("TextLabel", gui)
+label.Size = UDim2.new(0, 500, 0, 35)
+label.Position = UDim2.new(0.5, -250, 0, 5)
+label.BackgroundTransparency = 0.5
+label.BackgroundColor3 = Color3.new(0, 0, 0)
+label.TextColor3 = Color3.fromRGB(255, 215, 0)
+label.Font = Enum.Font.SourceSansBold
+label.TextSize = 20
+label.Text = "Use /aimbot | /esp | /esp2 | /aim %VALOR"
+label.Visible = true
 
-            Box.Visible = OnScreen and ESPEnabled
-            Box.Size = Vector2.new(FOVSize, FOVSize)
-            Box.Position = Vector2.new(Vector.X - FOVSize / 2, Vector.Y - FOVSize / 2)
-        else
-            Box.Visible = false
+local function isEnemy(plr)
+    return plr and plr.Team ~= LocalPlayer.Team and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0
+end
+
+local function getClosestTarget()
+    local closest = nil
+    local shortestDist = math.huge
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and isEnemy(plr) then
+            local head = plr.Character:FindFirstChild("Head")
+            if head then
+                local screenPos, visible = Camera:WorldToViewportPoint(head.Position)
+                if visible then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - Camera.ViewportSize / 2).Magnitude
+                    if dist < fovRadius and dist < shortestDist then
+                        shortestDist = dist
+                        closest = plr
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local drawings = {}
+
+local function clearESP()
+    for _, d in ipairs(drawings) do
+        if d and d.Remove then d:Remove() end
+    end
+    drawings = {}
+end
+
+local function drawESP()
+    clearESP()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and isEnemy(plr) then
+            local char = plr.Character
+            if char and char:FindFirstChild("Head") and char:FindFirstChild("HumanoidRootPart") then
+                local head = char.Head
+                local hrp = char.HumanoidRootPart
+                local screenPos, visible = Camera:WorldToViewportPoint(hrp.Position)
+                if visible then
+                    if espLine then
+                        local line = Drawing.new("Line")
+                        line.Color = Color3.fromRGB(255, 255, 0)
+                        line.Thickness = 2
+                        line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                        line.To = Vector2.new(screenPos.X, screenPos.Y)
+                        line.Visible = true
+                        table.insert(drawings, line)
+                    end
+                    if espBoxName then
+                        local name = Drawing.new("Text")
+                        name.Text = plr.Name
+                        name.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                        name.Size = 16
+                        name.Color = Color3.fromRGB(255, 255, 255)
+                        name.Center = true
+                        name.Outline = true
+                        name.Visible = true
+                        table.insert(drawings, name)
+
+                        -- ESP Box com bordas visíveis e centro transparente
+                        local box = Drawing.new("Square")
+                        box.Color = Color3.fromRGB(255, 0, 0)  -- Cor da borda
+                        box.Size = Vector2.new(40, 60)  -- Tamanho da caixa
+                        box.Position = Vector2.new(screenPos.X - 20, screenPos.Y - 30)
+                        box.Visible = true
+                        box.Thickness = 2  -- Espessura das bordas
+                        box.Filled = false  -- Tornar o centro transparente
+                        table.insert(drawings, box)
+                    end
+                end
+            end
+        end
+    end
+end
+
+RS.RenderStepped:Connect(function()
+    if aimbot then
+        if not currentTarget or not isEnemy(currentTarget) then
+            currentTarget = getClosestTarget()
+        end
+        if currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild("Head") then
+            local headPos = currentTarget.Character.Head.Position
+            local camPos = Camera.CFrame.Position
+            Camera.CFrame = CFrame.new(camPos, headPos)
         end
     end
 
-    RunService.RenderStepped:Connect(Update)
-end
-
-for _, player in ipairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        CreateESP(player)
-    end
-end
-
-Players.PlayerAdded:Connect(function(player)
-    if player ~= LocalPlayer then
-        CreateESP(player)
+    if espLine or espBoxName then
+        drawESP()
+    else
+        clearESP()
     end
 end)
 
-UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.F then
-        ESPEnabled = not ESPEnabled
+UserInputService.TouchTap:Connect(function(_, position)
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    if (position - screenCenter).Magnitude < 100 then
+        aimbot = not aimbot
+        sendPrivate("Aimbot " .. (aimbot and "Ativado ✅" or "Desativado ❌"))
+    end
+end)
+
+local function sendPrivate(msg)
+    local event = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+    if event and event:FindFirstChild("SayMessageRequest") then
+        event.SayMessageRequest:FireServer("[CLIENT] " .. msg, "All")
+    end
+end
+
+Players.LocalPlayer.Chatted:Connect(function(msg)
+    msg = msg:lower()
+    if msg == "/aimbot" then
+        aimbot = not aimbot
+        sendPrivate("Aimbot " .. (aimbot and "Ativado ✅" or "Desativado ❌"))
+
+    elseif msg == "/esp" then
+        espLine = not espLine
+        sendPrivate("ESP Line " .. (espLine and "Ativado ✅" or "Desativado ❌"))
+
+    elseif msg == "/esp2" then
+        espBoxName = not espBoxName
+        sendPrivate("ESP Box + Nome " .. (espBoxName and "Ativado ✅" or "Desativado ❌"))
+
+    elseif msg:sub(1, 6) == "/aim %" then
+        local value = tonumber(msg:match("%%(%d+)"))
+        if value and value >= 0 and value <= 100 then
+            fovPercent = value
+            fovRadius = maxFov * (fovPercent / 100)
+            sendPrivate("FOV ajustado para " .. value .. "%")
+        else
+            sendPrivate("⚠️ Use: /aim %0 até /aim %100")
+        end
     end
 end)
